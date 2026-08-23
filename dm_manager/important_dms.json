@@ -1,0 +1,33 @@
+[
+  {
+    "message_id": "sim_msg_001",
+    "sender_id": "health_brand_kr",
+    "text": "안녕하세요! 피트니스 전문 브랜드 OOO입니다. 무브카운터 앱 관련해서 인스타그램 광고 협찬 및 공동 마케팅 제안드리고 싶어 연락드렸습니다. 담당자님 연락처나 미팅 일정을 조율할 수 있을까요?",
+    "category": "BUSINESS",
+    "priority": "HIGH",
+    "reason": "비즈니스/협찬 관련 키워드 감지: [광고, 협찬, 미팅]",
+    "extracted_email": null,
+    "received_at": "2026-08-23 20:25:20 KST",
+    "calendar_event_id": "8oi8t2mt294k195huj0dss78i4"
+  },
+  {
+    "message_id": "sim_msg_002",
+    "sender_id": "fitness_mania_99",
+    "text": "앱 설치해서 써봤는데요, 스쿼트 20회 할 때 카메라 각도에 따라 횟수 카운트가 멈추는 오류가 발생합니다! 폰 기종은 갤럭시 S24입니다. 버그 확인 부탁드려요.",
+    "category": "FEEDBACK",
+    "priority": "HIGH",
+    "reason": "앱 오류 제보 또는 사용자 피드백 감지: [오류, 버그]",
+    "extracted_email": null,
+    "received_at": "2026-08-23 20:25:21 KST"
+  },
+  {
+    "message_id": "sim_msg_003",
+    "sender_id": "home_training_love",
+    "text": "피드 보고 연락드립니다! 14일 테스터 참여하고 싶습니다. 구글 플레이스토어 이메일은 tester_hong79@gmail.com 입니다. 설치 링크 보내주세요!",
+    "category": "TESTER",
+    "priority": "MEDIUM",
+    "reason": "테스터 신청 키워드 감지 (구글 이메일 발견: tester_hong79@gmail.com)",
+    "extracted_email": "tester_hong79@gmail.com",
+    "received_at": "2026-08-23 20:25:21 KST"
+  }
+]

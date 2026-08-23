@@ -1,0 +1,28 @@
+# ============================================
+# 🔒 보안 필수 제외 파일 (절대 GitHub 업로드 금지!)
+# ============================================
+.env
+*.env
+.env.*
+
+# 구글 OAuth 및 토큰 보안 자격증명
+auto_post/credentials/google_calendar.json
+auto_post/credentials/token.json
+credentials/
+*.json.secret
+
+# 로그 파일
+*.log
+auto_post/post_log.txt
+dm_manager/dm_monitor.log
+
+# 파이썬 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS 및 에디터 임시 파일
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
