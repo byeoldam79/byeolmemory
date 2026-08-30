@@ -1,8 +1,11 @@
 """
-무브카운터 30일 인스타그램 매일 자동 포스팅 메인 프로그램
-- 매일 19:00 KST Windows 작업 스케줄러에 의해 자동 실행됩니다.
-- ImgBB에 영구 호스팅된 9종의 AI 피트니스 이미지와 30일 콘텐츠 플랜을 바탕으로 업로드합니다.
-- 인스타그램 Graph API v23.0 규격에 맞춰 포스팅 후 Google Calendar에 결과를 자동 등록합니다.
+무브카운터 30일 인스타그램 매일 자동 포스팅 메인 프로그램 (완전 중복 방지 버전)
+파일명: post_daily.py
+설명:
+  1. 인스타그램 Graph API를 실시간 호출하여 실제 피드에 올라간 최근 게시글 캡션을 조회합니다.
+  2. 로컬 로그(post_log.json)의 역대 발행 기록을 전수 대조합니다.
+  3. [인스타그램 실제 피드] + [로컬 로그] 양쪽 모두에 단 한 번도 올라가지 않은 '미발행 콘텐츠'를 1일차부터 순차적으로 찾아 안전하게 발행합니다.
+  4. 오늘 이미 글을 올렸거나, 조금이라도 중복된 내용이 발견되면 절대 발행하지 않습니다.
 """
 import json
 import os
@@ -12,11 +15,11 @@ import requests
 from datetime import datetime, date
 import pytz
 
-# 콘솔 UTF-8 한글 인코딩 설정
+# 콘솔 UTF-8 한글 인코딩 설정 (터미널 및 로그 파일 한글 깨짐 방지)
 sys.stdout.reconfigure(encoding='utf-8')
 
 # ==========================================
-# 기본 경로 및 타임존 설정
+# 1. 기본 경로 및 한국 표준시(KST) 타임존 설정
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -29,10 +32,10 @@ CRED_FILE    = os.path.join(BASE_DIR, "credentials", "google_calendar.json")
 TOKEN_FILE   = os.path.join(BASE_DIR, "credentials", "token.json")
 
 # ==========================================
-# 환경 변수 로드 함수
+# 2. 환경 변수 로드 (.env 안전 로더)
 # ==========================================
-def load_env():
-    """ .env 파일에서 설정값을 직접 읽어옵니다. """
+def load_env() -> dict:
+    """ .env 파일에서 계정 ID, 토큰, 캘린더 ID를 읽어옵니다. """
     env = {}
     if os.path.exists(ENV_FILE):
         with open(ENV_FILE, 'r', encoding='utf-8') as f:
@@ -49,7 +52,7 @@ ACCESS_TOKEN = config.get("INSTAGRAM_ACCESS_TOKEN", "")
 CALENDAR_ID  = config.get("GOOGLE_CALENDAR_ID", "primary")
 
 # ==========================================
-# ImgBB 영구 호스팅 이미지 URL 맵 (9종)
+# 3. ImgBB 영구 호스팅 이미지 URL 맵 (9종)
 # ==========================================
 IMAGE_URLS = {
     "squat":     "https://i.ibb.co/PGY2ChSQ/movecounter-squat.jpg",
@@ -65,10 +68,10 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 포스팅 로그 관리 함수
+# 4. 로컬 포스팅 로그 관리 함수
 # ==========================================
 def load_log() -> dict:
-    """ 이미 포스팅된 기록(post_log.json)을 읽어와 중복 발행을 방지합니다. """
+    """ post_log.json 파일에서 과거의 모든 포스팅 이력을 불러옵니다. """
     if os.path.exists(LOG_FILE):
         try:
             with open(LOG_FILE, 'r', encoding='utf-8') as f:
@@ -78,28 +81,102 @@ def load_log() -> dict:
     return {}
 
 def save_log(log_data: dict):
-    """ 포스팅 성공 기록을 post_log.json 파일에 저장합니다. """
+    """ 포스팅 성공 기록을 post_log.json 파일에 안전하게 저장합니다. """
     with open(LOG_FILE, 'w', encoding='utf-8') as f:
         json.dump(log_data, f, ensure_ascii=False, indent=2)
 
 
 # ==========================================
-# 일차별 콘텐츠 플랜 로드 함수
+# 5. [중복 방지 1단계] 인스타그램 실제 피드 실시간 대조
 # ==========================================
-def get_today_content(day_number: int) -> dict:
-    """ content_plan.json에서 일차에 해당하는 테마, 캡션, 해시태그를 반환합니다. """
-    with open(CONTENT_FILE, 'r', encoding='utf-8') as f:
-        plan = json.load(f)
-    idx = (day_number - 1) % len(plan)
-    return plan[idx]
+def fetch_live_instagram_captions() -> list[str]:
+    """
+    인스타그램 Graph API를 직접 호출하여 현재 인스타그램 피드에 올라가 있는
+    최근 게시물들의 실제 캡션(본문 텍스트) 목록을 가져옵니다.
+    """
+    if not ACCESS_TOKEN or not ACCOUNT_ID:
+        return []
+    
+    url = f"https://graph.instagram.com/v23.0/{ACCOUNT_ID}/media"
+    params = {
+        "fields": "id,caption,timestamp",
+        "limit": "50",
+        "access_token": ACCESS_TOKEN
+    }
+    try:
+        res = requests.get(url, params=params, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            captions = [item.get("caption", "") for item in data.get("data", []) if item.get("caption")]
+            return captions
+        else:
+            print(f"⚠️ [주의] 인스타그램 피드 실시간 조회 실패: {res.text}")
+            return []
+    except Exception as e:
+        print(f"⚠️ [주의] 인스타그램 API 통신 오류: {e}")
+        return []
 
 
 # ==========================================
-# 인스타그램 포스팅 함수 (2단계 공식 규격)
+# 6. [중복 방지 2단계] 100% 미발행 콘텐츠 자동 선별
+# ==========================================
+def get_next_unposted_content(all_plans: list[dict], log_data: dict, live_captions: list[str]) -> dict | None:
+    """
+    30일치 콘텐츠 플랜 전체를 1일차부터 순회하며:
+    1) post_log.json에 기록된 적이 있는지 확인
+    2) 인스타그램 실제 피드의 캡션에 해당 글의 핵심 문장/테마가 이미 존재하는지 확인
+    두 조건 모두에서 '단 한 번도 올라간 적 없는' 가장 첫 번째 콘텐츠를 반환합니다.
+    """
+    # 1. 로컬 로그에서 이미 발행된 테마 및 일차 수집
+    posted_themes_in_log = set()
+    posted_days_in_log = set()
+    for date_key, info in log_data.items():
+        if isinstance(info, dict):
+            if "theme" in info:
+                posted_themes_in_log.add(info["theme"].strip())
+            if "day" in info:
+                posted_days_in_log.add(info["day"])
+
+    # 2. 1일차부터 30일차까지 순차적으로 미발행 여부 검사
+    for plan in all_plans:
+        day_num = plan.get("day")
+        theme = plan.get("theme", "").strip()
+        caption = plan.get("caption", "")
+        # 본문의 첫 줄 또는 대표 문구 추출
+        first_line = caption.split('\n')[0].strip() if caption else ""
+
+        # 검사 A: 로컬 로그에 테마나 일차가 이미 존재하는가?
+        is_in_log = (theme in posted_themes_in_log) or (day_num in posted_days_in_log)
+
+        # 검사 B: 실제 인스타그램 피드 캡션에 이 테마나 첫 줄 문구가 이미 올라가 있는가?
+        is_in_live_feed = False
+        for live_cap in live_captions:
+            if (theme and theme in live_cap) or (first_line and first_line in live_cap):
+                is_in_live_feed = True
+                break
+
+        # 로컬 로그에도 없고, 실제 인스타그램 피드에도 없다면 -> 오늘 올릴 안전한 콘텐츠로 확정!
+        if not is_in_log and not is_in_live_feed:
+            print(f"🎯 [선택 완료] 미발행 콘텐츠 발견: Day {day_num} - '{theme}'")
+            return plan
+        else:
+            reason = []
+            if is_in_log:
+                reason.append("로컬 로그 기록됨")
+            if is_in_live_feed:
+                reason.append("실제 인스타그램 피드에 이미 존재함")
+            print(f"⏭️ [스킵] Day {day_num} ('{theme}') 건너뜀 사유: {', '.join(reason)}")
+
+    # 30일치 모든 콘텐츠가 이미 발행된 경우
+    return None
+
+
+# ==========================================
+# 7. 인스타그램 포스팅 함수 (2단계 공식 규격)
 # ==========================================
 def post_to_instagram(image_url: str, caption: str, hashtags: str) -> str | None:
     """
-    Instagram Graph API v23.0을 이용해 이미지를 업로드하고 post_id를 반환합니다.
+    Instagram Graph API v23.0 규격에 따라 미디어를 2단계로 발행합니다.
     1. 미디어 컨테이너 생성 (POST /{account_id}/media)
     2. 서버 처리 대기 (30초)
     3. 피드에 최종 발행 (POST /{account_id}/media_publish)
@@ -153,7 +230,7 @@ def post_to_instagram(image_url: str, caption: str, hashtags: str) -> str | None
 
 
 # ==========================================
-# Google Calendar 완료 일정 등록 함수
+# 8. Google Calendar 완료 일정 등록 함수
 # ==========================================
 def add_to_google_calendar(day_number: int, theme: str, post_id: str, image_url: str):
     """
@@ -214,51 +291,76 @@ def add_to_google_calendar(day_number: int, theme: str, post_id: str, image_url:
 
 
 # ==========================================
-# 메인 실행 엔트리포인트
+# 9. 메인 실행 엔트리포인트
 # ==========================================
 def main():
     print("=" * 60)
-    print("🚀 MoveCounter 30일 인스타그램 자동 포스팅 시스템 가동")
-    print(f"⏰ 현재 시각 : {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S KST')}")
+    print("🚀 MoveCounter 30일 인스타그램 자동 포스팅 시스템 가동 (완전 중복 방지)")
+    now_kst = datetime.now(KST)
+    today_str = now_kst.strftime('%Y-%m-%d')
+    print(f"⏰ 현재 시각 : {now_kst.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print("=" * 60)
 
-    # 30일 기준 시작일 설정 (2026-08-24 기준)
-    START_DATE = date(2026, 8, 24)
-    today = date.today()
-    day_number = (today - START_DATE).days + 1
-
-    # 시작일 이전이거나 테스트 시 기본 1일차로 보정
-    if day_number < 1:
-        day_number = 1
-    elif day_number > 30:
-        day_number = ((day_number - 1) % 30) + 1
-
-    print(f"📌 오늘 일정: Day {day_number} / 30")
-
-    # 오늘 이미 포스팅을 완료했는지 중복 검사
+    # 1. 오늘 날짜 중복 발행 여부 1차 체크
     log = load_log()
-    today_str = today.isoformat()
     if today_str in log:
         prev_post = log[today_str]
-        print(f"ℹ️ [중복 방지] 오늘({today_str})은 이미 포스팅을 마쳤습니다.")
+        print(f"ℹ️ [중복 방지 1차 차단] 오늘({today_str})은 이미 포스팅을 마쳤습니다.")
         print(f"   포스트 ID : {prev_post.get('post_id')}")
         print(f"   테마      : {prev_post.get('theme')}")
+        print("   -> 하루에 2회 이상 포스팅되지 않도록 안전하게 종료합니다.")
         return
 
-    # 오늘자 콘텐츠 및 이미지 URL 로드
-    content = get_today_content(day_number)
-    image_key = content.get("image_key", "squat")
-    image_url = IMAGE_URLS.get(image_key, IMAGE_URLS["squat"])
-
-    print(f"📖 오늘의 테마   : {content['theme']}")
-    print(f"🖼️ 선택된 이미지 : {image_key} ({image_url})")
-
-    # 토큰 유효성 검사
+    # 2. 토큰 및 필수 설정값 검증
     if not ACCESS_TOKEN:
         print("❌ [오류] INSTAGRAM_ACCESS_TOKEN이 .env에 설정되지 않았습니다!")
         return
 
-    # 1. Instagram 포스팅 실행
+    # 3. 인스타그램 실시간 피드 캡션 목록 조회
+    print("\n🔍 [실시간 검증] 인스타그램 최근 피드 게시물 대조 중...")
+    live_captions = fetch_live_instagram_captions()
+    print(f"  -> 인스타그램 최근 게시글 {len(live_captions)}개 캡션 수집 완료")
+
+    # 4. 30일 콘텐츠 플랜 로드
+    if not os.path.exists(CONTENT_FILE):
+        print(f"❌ [오류] 콘텐츠 플랜 파일이 없습니다: {CONTENT_FILE}")
+        return
+
+    with open(CONTENT_FILE, 'r', encoding='utf-8') as f:
+        all_plans = json.load(f)
+
+    # 5. [핵심] 인스타그램 피드와 로컬 로그를 대조하여 단 한 번도 안 올라간 다음 글 선택
+    print("\n📋 [콘텐츠 선별] 미발행 콘텐츠 검색 중...")
+    content = get_next_unposted_content(all_plans, log, live_captions)
+
+    if not content:
+        print("🎉 [안내] 30일치 모든 콘텐츠가 이미 인스타그램에 성공적으로 발행되었습니다!")
+        return
+
+    day_number = content.get("day", 1)
+    theme = content.get("theme", "")
+    
+    # [새로운 기능] content_plan.json에 직접 이미지 URL(image_url)이 등록되어 있다면 우선적으로 사용합니다.
+    # 만약 등록되어 있지 않다면, 기존처럼 image_key를 사용해 사전에 선언된 기본 이미지 URL을 가져옵니다.
+    image_url = content.get("image_url")
+    image_key = None
+    if not image_url:
+        image_key = content.get("image_key", "squat")
+        image_url = IMAGE_URLS.get(image_key, IMAGE_URLS["squat"])
+        print(f"🖼️ [기본 이미지 사용] 설정된 이미지 키: {image_key}")
+    else:
+        print(f"🖼️ [커스텀 이미지 사용] 외부 이미지 URL 적용: {image_url}")
+
+    print("\n" + "-" * 60)
+    print(f"📌 [오늘의 확정 콘텐츠] Day {day_number} / 30")
+    print(f"📖 오늘의 테마   : {theme}")
+    if image_key:
+        print(f"🖼️ 선택된 이미지 : {image_key} ({image_url})")
+    else:
+        print(f"🖼️ 선택된 이미지 : 커스텀 이미지 ({image_url})")
+    print("-" * 60)
+
+    # 6. Instagram Graph API 포스팅 실행
     post_id = post_to_instagram(
         image_url=image_url,
         caption=content['caption'],
@@ -269,10 +371,10 @@ def main():
         print("❌ [실패] 포스팅 작업이 중단되었습니다.")
         return
 
-    # 2. 실행 로그 저장 (중복 방지용)
+    # 7. 실행 로그 저장 (오늘 날짜 키로 안전하게 누적 기록)
     log[today_str] = {
         "day": day_number,
-        "theme": content['theme'],
+        "theme": theme,
         "post_id": post_id,
         "image_url": image_url,
         "posted_at": datetime.now(KST).isoformat()
@@ -280,10 +382,10 @@ def main():
     save_log(log)
     print(f"💾 [기록] post_log.json에 포스팅 이력 저장 완료")
 
-    # 3. Google Calendar 연동 기록
+    # 8. Google Calendar 연동 기록
     add_to_google_calendar(
         day_number=day_number,
-        theme=content['theme'],
+        theme=theme,
         post_id=post_id,
         image_url=image_url
     )
@@ -291,7 +393,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"✨ [최종 완료] Day {day_number} 인스타그램 자동 포스팅 및 캘린더 기록 성공!")
     print(f"   포스트 ID : {post_id}")
-    print(f"   테마      : {content['theme']}")
+    print(f"   테마      : {theme}")
     print(f"   인스타 확인: https://www.instagram.com/bdai_79/")
     print("=" * 60)
 

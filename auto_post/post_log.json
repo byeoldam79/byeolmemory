@@ -5,5 +5,34 @@
     "post_id": "18083274017410843",
     "image_url": "https://i.ibb.co/PGY2ChSQ/movecounter-squat.jpg",
     "posted_at": "2026-08-23T20:20:51.088108+09:00"
+  },
+  "2026-08-26": {
+    "day": 3,
+    "theme": "플랭크 60초 챌린지",
+    "post_id": "18022974848907595",
+    "image_url": "https://i.ibb.co/NHvg6Ws/movecounter-plank.jpg",
+    "posted_at": "2026-08-26T19:36:31.050920+09:00"
+  },
+  "2026-08-27": {
+    "day": 5,
+    "theme": "하루 10분의 기적",
+    "post_id": "18118637455904451",
+    "image_url": "https://i.ibb.co/DDDxcNrf/movecounter-morning.jpg",
+    "posted_at": "2026-08-27T19:47:21.206327+09:00"
+  },
+  "2026-08-30": {
+    "day": 2,
+    "theme": "푸쉬업 자세 교정",
+    "post_id": "18126400174705012",
+    "image_url": "https://i.ibb.co/ZRs65tVb/movecounter-pushup.jpg",
+    "posted_at": "2026-08-30T19:12:20.099350+09:00"
+  },
+  "2026-08-30_force_day6": {
+    "day": 6,
+    "theme": "방구석 탈출기! 점핑잭으로 여는 첫날",
+    "post_id": "18042203426812623",
+    "image_url": "https://i.ibb.co/0173gZ7/368b56d247c3.jpg",
+    "posted_at": "2026-08-30T19:28:44.290927+09:00",
+    "type": "manual_force"
   }
 }
