@@ -137,8 +137,20 @@ def get_next_unposted_content(all_plans: list[dict], log_data: dict, live_captio
             if "day" in info:
                 posted_days_in_log.add(info["day"])
 
-    # 2. 1일차부터 30일차까지 순차적으로 미발행 여부 검사
-    for plan in all_plans:
+    # 2. 검사 순서 정하기
+    #    campaign(테스터 모집 등) 글은 priority 숫자가 작은 것부터 **일반 30일 글보다 먼저** 나간다.
+    #    (2026-09-08 — 테스터 모집을 30일 다 돌 때까지 기다릴 수 없어서 넣음)
+    def order_key(p):
+        return (0 if p.get("campaign") else 1, p.get("priority", 999), p.get("day", 999))
+
+    ordered = sorted(all_plans, key=order_key)
+    campaigns = [p for p in ordered if p.get("campaign")]
+    if campaigns:
+        print(f"📣 [캠페인] 우선 발행 대상 {len(campaigns)}건 — "
+              + ", ".join(sorted({p['campaign'] for p in campaigns})))
+
+    # 3. 순서대로 미발행 여부 검사
+    for plan in ordered:
         day_num = plan.get("day")
         theme = plan.get("theme", "").strip()
         caption = plan.get("caption", "")
@@ -294,8 +306,14 @@ def add_to_google_calendar(day_number: int, theme: str, post_id: str, image_url:
 # 9. 메인 실행 엔트리포인트
 # ==========================================
 def main():
+    # --dry-run : 무엇이 올라갈지 보여주기만 하고 **실제로는 올리지 않는다.**
+    #             (2026-09-08 — 올려 보기 전에 확인할 방법이 없어서 넣음)
+    dry = "--dry-run" in sys.argv
+
     print("=" * 60)
-    print("🚀 MoveCounter 30일 인스타그램 자동 포스팅 시스템 가동 (완전 중복 방지)")
+    print("🚀 MoveCounter 인스타그램 자동 포스팅 시스템 가동 (완전 중복 방지)")
+    if dry:
+        print("🧪 미리보기 모드 — 아무것도 게시하지 않습니다.")
     now_kst = datetime.now(KST)
     today_str = now_kst.strftime('%Y-%m-%d')
     print(f"⏰ 현재 시각 : {now_kst.strftime('%Y-%m-%d %H:%M:%S KST')}")
@@ -303,7 +321,7 @@ def main():
 
     # 1. 오늘 날짜 중복 발행 여부 1차 체크
     log = load_log()
-    if today_str in log:
+    if today_str in log and not dry:
         prev_post = log[today_str]
         print(f"ℹ️ [중복 방지 1차 차단] 오늘({today_str})은 이미 포스팅을 마쳤습니다.")
         print(f"   포스트 ID : {prev_post.get('post_id')}")
@@ -352,7 +370,8 @@ def main():
         print(f"🖼️ [커스텀 이미지 사용] 외부 이미지 URL 적용: {image_url}")
 
     print("\n" + "-" * 60)
-    print(f"📌 [오늘의 확정 콘텐츠] Day {day_number} / 30")
+    label = content.get("campaign") or f"Day {day_number} / 30"
+    print(f"📌 [오늘의 확정 콘텐츠] {label} (Day {day_number})")
     print(f"📖 오늘의 테마   : {theme}")
     if image_key:
         print(f"🖼️ 선택된 이미지 : {image_key} ({image_url})")
@@ -361,6 +380,26 @@ def main():
     print("-" * 60)
 
     # 6. Instagram Graph API 포스팅 실행
+    if dry:
+        print("\n" + "=" * 60)
+        print("🧪 미리보기 — 아래 내용이 올라갈 예정입니다. (실제로는 올리지 않았습니다)")
+        print("=" * 60)
+        if content.get("campaign"):
+            print(f"캠페인 : {content['campaign']}")
+        print(f"이미지 : {image_url}")
+        print("-" * 60)
+        print(content["caption"])
+        print()
+        print(content["hashtags"])
+        print("-" * 60)
+        full = f"{content['caption']}\n\n{content['hashtags']}"
+        print(f"글자 수 : {len(full)} / 2200 (인스타 한도)")
+        if len(full) > 2200:
+            print("❌ 인스타 캡션 한도를 넘었습니다. 줄여야 합니다.")
+        print("\n실제로 올리려면 --dry-run 을 빼고 다시 실행하십시오.")
+        print("=" * 60)
+        return
+
     post_id = post_to_instagram(
         image_url=image_url,
         caption=content['caption'],
