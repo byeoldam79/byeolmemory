@@ -3,8 +3,9 @@ Windows 작업 스케줄러에 매일 오후 7시 자동 포스팅 등록 스크
 파일명: setup_scheduler.py
 설명: 
   1. 인스타그램 자동 포스팅 배치 파일(run_post.bat)을 생성합니다.
-  2. cmd 검은 창 깜빡임을 100% 방지하는 VBScript 무창 실행기(run_silent.vbs)를 생성합니다.
-  3. Windows 작업 스케줄러에 매일 19:00에 실행되도록 wscript.exe를 통해 완전 숨김 모드로 등록합니다.
+  2. 더 이상 쓰지 않는 VBScript 실행기(run_silent.vbs)를 지웁니다.
+     (2026-09-08 — 윈도우가 이 방식을 막아 자동 발행이 조용히 멈춰 있었다)
+  3. Windows 작업 스케줄러에 매일 19:00, cmd.exe 가 배치를 직접 실행하도록 숨김 등록합니다.
   - 배터리 모드 실행 허용
   - 작업 누락 시 즉시 실행(StartWhenAvailable)
   - 시작 위치(WorkingDirectory) 명시
@@ -44,17 +45,15 @@ def load_env():
     return env
 
 env = load_env()
-token = env.get('INSTAGRAM_ACCESS_TOKEN', '')
-account_id = env.get('INSTAGRAM_ACCOUNT_ID', '37693295306982418')
 
 # 1. run_post.bat 생성 (실제 포스팅 동작을 수행하는 배치 파일)
-# chcp 65001을 통해 한글 인코딩을 보장하고 작업 디렉토리로 이동 후 파이썬을 실행합니다.
+# ⚠ 토큰을 배치 파일에 적지 않는다.
+#   2026-09-08 — 예전 방식은 토큰을 이 파일에 그대로 써 넣었고,
+#   그 파일이 공개 깃허브 저장소에 올라가 있었다.
+#   post_daily.py 가 .env 에서 직접 읽으므로 배치 파일에는 열쇠가 필요 없다.
 bat_content = f"""@echo off
 chcp 65001 > nul
 cd /d "{ROOT_DIR}"
-set INSTAGRAM_ACCOUNT_ID={account_id}
-set INSTAGRAM_ACCESS_TOKEN={token}
-set GOOGLE_CALENDAR_ID=primary
 "{PYTHON_EXE}" "{os.path.join(AUTO_POST_DIR, 'post_daily.py')}" >> "{LOG_PATH}" 2>&1
 """
 
@@ -62,32 +61,29 @@ with open(BAT_PATH, 'w', encoding='utf-8') as f:
     f.write(bat_content)
 print(f"✅ [1/4] run_post.bat 배치 파일 생성 완료: {BAT_PATH}")
 
-# 2. run_silent.vbs 생성 (cmd 검은 창 깜빡임을 100% 차단하는 무창 VBScript 실행기)
-# WScript.Shell의 Run 메서드 두 번째 인자 '0'은 창을 화면에 전혀 표시하지 않는 Hide Window 모드입니다.
-vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run chr(34) & "{BAT_PATH}" & chr(34), 0, False
-Set WshShell = Nothing
-'''
-
-with open(VBS_PATH, 'w', encoding='utf-8') as f:
-    f.write(vbs_content)
-print(f"✅ [2/4] run_silent.vbs 무창(Silent) 실행 스크립트 생성 완료: {VBS_PATH}")
+# 2. VBScript 실행기는 더 이상 만들지 않는다.
+#    2026-09-08 — 윈도우가 이 방식을 막아 8/27 이후 한 편도 발행되지 않았다.
+#    스케줄러가 run_post.bat 을 직접 실행하고, 창은 작업 설정의 '숨김'으로 가린다.
+if os.path.exists(VBS_PATH):
+    os.remove(VBS_PATH)
+    print(f"🗑️ [2/4] 더 이상 쓰지 않는 run_silent.vbs 를 지웠습니다: {VBS_PATH}")
+else:
+    print("ℹ️ [2/4] VBScript 실행기는 쓰지 않습니다 (작업 스케줄러가 배치를 직접 실행)")
 
 # 3. PowerShell 스크립트를 통한 Windows 작업 스케줄러 등록
-# cmd.exe 대신 Windows 내장 wscript.exe를 통해 vbs를 실행하여 검은 창 팝업을 완전히 없앱니다.
-print("\n🔄 [3/4] Windows 작업 스케줄러 등록 중 (PowerShell 연동 - 무창 모드)...")
+# cmd.exe 로 배치를 **직접** 실행한다. 창은 작업 설정의 Hidden 으로 가린다.
+print("\n🔄 [3/4] Windows 작업 스케줄러 등록 중...")
 
 ps_script = f"""
 $taskName = "{TASK_NAME}"
-$wscriptPath = "C:\\Windows\\System32\\wscript.exe"
-$vbsPath = "{VBS_PATH}"
+$batPath = "{BAT_PATH}"
 $workDir = "{AUTO_POST_DIR}"
 
 # 1. 기존 동일한 이름의 태스크가 있다면 안전하게 삭제
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 
-# 2. 실행 동작 정의 (wscript.exe "run_silent.vbs", 시작 위치 지정)
-$action = New-ScheduledTaskAction -Execute $wscriptPath -Argument "`"$vbsPath`"" -WorkingDirectory $workDir
+# 2. 실행 동작 정의 (cmd.exe /c "run_post.bat")
+$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$batPath`"" -WorkingDirectory $workDir
 
 # 3. 매일 19:00 트리거 설정
 $trigger = New-ScheduledTaskTrigger -Daily -At "19:00"
@@ -99,6 +95,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -WakeToRun `
     -MultipleInstances IgnoreNew `
+    -Hidden `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 
 # 5. 현재 로그인된 사용자 권한으로 태스크 등록
@@ -116,9 +113,9 @@ try:
     )
     
     if result.returncode == 0:
-        print(f"🎉 [성공] 작업 스케줄러 무창(Silent) 모드 등록 완료!")
+        print(f"🎉 [성공] 작업 스케줄러 등록 완료!")
         print(f"  - 태스크명: {TASK_NAME}")
-        print(f"  - 실행 방식: wscript.exe -> run_silent.vbs (cmd 창 절대 안 뜸)")
+        print(f"  - 실행 방식: cmd.exe -> run_post.bat (숨김 실행)")
         print(f"  - 실행 시간: 매일 19:00")
         print(f"  - 시작 위치: {AUTO_POST_DIR}")
         print(f"  - 주요 옵션: 배터리 모드 허용, 놓친 작업 즉시 실행(StartWhenAvailable)")

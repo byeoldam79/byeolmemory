@@ -26,3 +26,6 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# 실행 배치 (경로·환경 값이 PC마다 다름)
+auto_post/run_post_test.bat
