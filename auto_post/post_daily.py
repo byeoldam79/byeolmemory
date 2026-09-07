@@ -184,6 +184,31 @@ def get_next_unposted_content(all_plans: list[dict], log_data: dict, live_captio
 
 
 # ==========================================
+# 6-2. 글 안의 주소가 살아 있는지 확인
+# ==========================================
+def dead_links(caption: str) -> list[str]:
+    """
+    글에 적힌 접수 주소가 실제로 열리는지 확인한다.
+    죽은 주소를 적어 놓고 홍보하면 보고 온 사람이 그대로 돌아간다.
+    (2026-09-08 — 접수를 링크 한 번으로 끝내도록 바꾸면서 넣음)
+    """
+    import re
+    found = re.findall(r"(?:https?://)?([a-z0-9][a-z0-9.\-]+\.[a-z]{2,}(?:/[^\s]*)?)", caption, re.I)
+    bad = []
+    for host in dict.fromkeys(found):
+        if host.startswith("play.google.com") or host.startswith("groups.google.com"):
+            continue  # 구글 쪽은 로그인 화면이 떠서 상태로 판단할 수 없다
+        url = "https://" + host.rstrip(".,)")
+        try:
+            r = requests.get(url, timeout=15, allow_redirects=True)
+            if r.status_code >= 400:
+                bad.append(f"{url} (HTTP {r.status_code})")
+        except Exception as e:
+            bad.append(f"{url} ({type(e).__name__})")
+    return bad
+
+
+# ==========================================
 # 7. 인스타그램 포스팅 함수 (2단계 공식 규격)
 # ==========================================
 def post_to_instagram(image_url: str, caption: str, hashtags: str) -> str | None:
@@ -378,6 +403,17 @@ def main():
     else:
         print(f"🖼️ 선택된 이미지 : 커스텀 이미지 ({image_url})")
     print("-" * 60)
+
+    # 5-2. 글에 적힌 접수 주소가 살아 있는지 확인 — 죽어 있으면 올리지 않는다
+    bad = dead_links(content["caption"])
+    if bad:
+        print("\n" + "=" * 60)
+        print("⛔ 글에 적힌 주소가 열리지 않아 발행을 멈췄습니다.")
+        for b in bad:
+            print(f"   · {b}")
+        print("   주소를 살린 뒤 다시 실행하십시오. (잘못된 주소로 홍보하면 보고 온 사람이 그냥 돌아갑니다)")
+        print("=" * 60)
+        return
 
     # 6. Instagram Graph API 포스팅 실행
     if dry:
