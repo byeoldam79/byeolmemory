@@ -28,8 +28,8 @@ LOG_FILE = os.path.join(BASE_DIR, "post_log.json")
 API = "https://graph.instagram.com/v23.0"
 
 IMAGES = [
-    "https://i.ibb.co/LzbX789c/43b0eebafe7d.png",   # 1장 · 모집
-    "https://i.ibb.co/b5QbGTpc/596d38ebf13e.png",   # 2장 · 혜택·랭킹
+    "https://i.ibb.co/8gF187mG/f5fd677081e7.png",   # 1장 · 모집 (2026-09-10 개정)
+    "https://i.ibb.co/Xr00Ktd2/6710000628f1.png",   # 2장 · 혜택·랭킹 (2026-09-10 개정)
 ]
 
 CAPTION = """무브카운터 테스터를 모십니다.
@@ -53,7 +53,8 @@ CAPTION = """무브카운터 테스터를 모십니다.
 모집 인원은 1차 50명, 예비 50명입니다.
 안드로이드 · 지메일(@gmail.com) 계정이 필요합니다.
 
-👉 신청은 프로필 링크에서 하실 수 있습니다."""
+👉 신청은 프로필 링크를 눌러 주세요.
+   (직접 입력) srv1948777.hstgr.cloud/apply"""
 
 HASHTAGS = ("#테스터모집 #앱테스터모집 #베타테스터 #클로즈드베타 #홈트 #홈트레이닝 "
             "#맨몸운동 #스쿼트 #플랭크 #운동앱 #AI운동 #무브카운터 #안드로이드앱 "
